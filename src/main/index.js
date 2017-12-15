@@ -48,6 +48,10 @@ app.on('activate', () => {
   }
 })
 
+process.on('uncaughtException', function (error) {
+  console.log('uncaughtException', error)
+})
+
 /**
  * Auto Updater
  *
@@ -74,7 +78,8 @@ function getProxyList (page, pageSize, callback) {
   var url = 'http://localhost:8000/proxy_list?page=' + page + '&page_size=' + pageSize
   request(url, function (error, response, body) {
     if (error) {
-      callback(error, false)
+      console.log(error)
+      callback(body, false)
     }
     body = JSON.parse(body)
     if (body.length) {
@@ -114,10 +119,9 @@ ipcMain.on('check-proxy', (event, proxyList) => {
     process.env.HTTP_PROXY = httpProxy
     request(url, function (error, response, body) {
       if (error) {
-        return
+        console.log(error)
       }
       body = JSON.parse(body)
-      console.log(body)
       event.sender.send('check-proxy-reply:one', proxy)
     })
   })
