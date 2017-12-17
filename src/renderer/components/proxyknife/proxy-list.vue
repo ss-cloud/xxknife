@@ -3,6 +3,7 @@
     <div>
       <el-button type="primary" :loading="geted" @click="get">获取代理</el-button>
       <el-button type="success" :loading="checked" @click="check">验证代理</el-button>
+      <el-button type="warning" :disabled="!checked" @click="abort">结束验证</el-button>
     </div>
     <div style="margin-top:40px;">
       代理数量：{{ count }}
@@ -13,8 +14,17 @@
     </div>
 
     <div style="margin-top40px;">
+      <el-pagination
+        @size-change="sizeChange"
+        @current-change="currentChange"
+        :current-page="currentPage"
+        :page-sizes="[20, 50, 100, 200]"
+        :page-size="pageSize"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total">
+      </el-pagination>
       <el-table
-        :data="validList"
+        :data="showValidList"
         style="width: 100%">
         <el-table-column
           prop="ip"
@@ -27,18 +37,22 @@
           width="180">
         </el-table-column>
         <el-table-column
-          prop="address"
-          label="地址">
+          prop="country"
+          label="城市">
         </el-table-column>
       </el-table>
-      <el-pagination
-        :current-page="4"
-        :page-sizes="[100, 200, 300, 400]"
-        :page-size="100"
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="400">
-      </el-pagination>
     </div>
+    <el-dialog title="验证代理有效性" :visible.sync="dialogCheckVisible">
+      <el-form :model="form">
+        <el-form-item label="验证地址" label-width="120px">
+          <el-input v-model="form.url" auto-complete="off"></el-input>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="dialogCheckVisible = false">取 消</el-button>
+        <el-button type="primary" @click="check">确 定</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -56,12 +70,22 @@ export default {
       checked: false,
       count: 0,
       valid_count: 0,
+      currentPage: 1,
+      pageSize: 20,
+      total: 0,
       proxyList: [],
-      validList: []
+      // check
+      dialogCheckVisible: false,
+      form: {
+        url: 'https://httpbin.org/get?show_env=1'
+      },
+      validList: [],
+      showValidList: []
     }
   },
   created: function () {
     var vm = this
+    ipcRenderer.send('check-proxy-abort')
     ipcRenderer.on('get-proxy-reply:finish', (event, proxyList) => {
       vm.geted = false
       vm.proxyList = proxyList
@@ -78,12 +102,16 @@ export default {
 
     ipcRenderer.on('check-proxy-reply:one', (event, proxy) => {
       vm.validList.push(proxy)
+      vm.valid_count++
     })
   },
   methods: {
     get () {
       this.geted = true
       ipcRenderer.send('get-proxy')
+    },
+    showCheckDialog () {
+      this.dialogCheckVisible = true
     },
     check () {
       if (this.proxyList.length === 0) {
@@ -94,7 +122,29 @@ export default {
         return
       }
       this.checked = true
+      this.valid_count = 0
+      this.showValidList = []
+      this.validList = []
+      ipcRenderer.send('check-proxy-abort')
       ipcRenderer.send('check-proxy', this.proxyList)
+    },
+    abort () {
+      ipcRenderer.send('check-proxy-abort')
+      this.showValidList = this.validList.slice(0, this.pageSize)
+      this.checked = false
+      this.total = this.valid_count
+    },
+    sizeChange (pageSize) {
+      this.pageSize = pageSize
+      var start = (this.currentPage - 1) * pageSize
+      var end = this.currentPage * pageSize
+      this.showValidList = this.validList.slice(start, end)
+    },
+    currentChange (currentPage) {
+      this.currentPage = currentPage
+      var start = (currentPage - 1) * this.pageSize
+      var end = currentPage * this.pageSize
+      this.showValidList = this.validList.slice(start, end)
     }
   }
 }

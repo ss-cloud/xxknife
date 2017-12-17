@@ -40,6 +40,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+  delete process.env.HTTP_PROXY
 })
 
 app.on('activate', () => {
@@ -74,6 +75,10 @@ app.on('ready', () => {
 
 const {ipcMain} = require('electron')
 
+request.defaults({
+  pool: {maxSockets: 5},
+  timeout: 10
+})
 function getProxyList (page, pageSize, callback) {
   var url = 'http://localhost:8000/proxy_list?page=' + page + '&page_size=' + pageSize
   request(url, function (error, response, body) {
@@ -91,6 +96,7 @@ function getProxyList (page, pageSize, callback) {
 }
 ipcMain.on('get-proxy', (event, arg) => {
   console.log('get-proxy')
+  delete process.env.HTTP_PROXY
   var proxyList = []
   var callback = function (pl, hn) {
     if (hn) {
@@ -112,17 +118,32 @@ ipcMain.on('get-proxy', (event, arg) => {
   getProxyList(page, pageSize, callback)
 })
 
+var checkProxyRequests = []
 ipcMain.on('check-proxy', (event, proxyList) => {
   proxyList.forEach(proxy => {
     var httpProxy = util.format('http://%s:%s', proxy.ip, proxy.port)
-    var url = 'https://httpbin.org/get'
+    var url = 'https://httpbin.org/get?show_env=1'
     process.env.HTTP_PROXY = httpProxy
-    request(url, function (error, response, body) {
+    var start = new Date().getTime()
+    var r = request(url, function (error, response, body) {
+      var end = new Date().getTime()
+      var speed = end - start
       if (error) {
         console.log(error)
       }
       body = JSON.parse(body)
+      console.log(response)
+      proxy.speed = speed
       event.sender.send('check-proxy-reply:one', proxy)
     })
+    checkProxyRequests.push(r)
   })
+})
+
+ipcMain.on('check-proxy-abort', (event, arg) => {
+  delete process.env.HTTP_PROXY
+  checkProxyRequests.forEach(r => {
+    r.abort()
+  })
+  checkProxyRequests = []
 })
